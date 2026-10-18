@@ -10,11 +10,20 @@ def find_jsonl_files(root: str | Path):
     root = Path(root).expanduser()
     if not root.exists():
         raise FileNotFoundError(f"data path does not exist: {root}")
+    # Temporarily disable the Agent subset; leave other data/loading unchanged.
+    parts = root.resolve().parts
+    if parts[-1] == "agent" or any(
+        a == "data" and b == "agent" for a, b in zip(parts, parts[1:])
+    ):
+        return []
     if root.is_file():
         if root.suffix != ".jsonl":
             raise ValueError("expected a JSONL file or a directory of JSONL files")
         return [root]
-    files = [path for path in root.rglob("*.jsonl") if path.is_file()]
+    files = [
+        path for path in root.rglob("*.jsonl")
+        if path.is_file() and "agent" not in path.relative_to(root).parts[:-1]
+    ]
     def line_count(path: Path) -> int:
         with path.open("rb") as handle:
             return sum(1 for _ in handle)

@@ -16,19 +16,6 @@ trained weights, caches, or source repository history are included.
 - `tests/`: existing model, loader, training, inference, and utility tests.
 - `scripts/fetch_inst.py`: legacy optional Tulu importer, retained unchanged.
 
-## Setup
-
-Python 3.10+ is required by the source syntax. Install a PyTorch build appropriate
-for your CPU/CUDA environment, then install the remaining runtime dependencies:
-
-~~~bash
-pip install torch transformers tqdm
-pip install pytest
-~~~
-
-The default tokenizer is `Qwen/Qwen2.5-0.5B`. Its initial download requires
-network access; `--tokenizer` can point to a local tokenizer instead.
-
 ## Models
 
 | Preset | Architecture | Parameters | Layers | Hidden size |
@@ -51,36 +38,59 @@ The current loader supports ordinary user/assistant conversations and book/wiki
 text. It loads records and encoded samples into memory rather than streaming,
 and tail-truncates sequences exceeding `max_seq_len`.
 
-**Agent/CoT support is not added by this migration.** The existing loader reads
-message `role` and `content` only; it does not render `tools`, `tool_calls`, or
-`reasoning_content`, and does not apply per-message `loss` flags. Adapt the loader
-and inference template before using the Agent or CoT subsets for full-fidelity
-training.
+CoT messages additionally render `reasoning_content` as
+`<think>...</think>` before the original `content`. Assistant reasoning and
+answers are supervised by role, ignoring source `loss` flags, just like ordinary
+QA. Text continuation, final EOS, truncation, reading and batching are unchanged.
+
+Agent tool definitions/calls are not supported in this update. The file finder
+temporarily excludes `agent/` directories, including explicit paths under
+`data/agent/`. Other subsets, including `cot/`, load normally. This only changes
+local file selection; it does not delete data or update the remote dataset.
+Long CoT may be truncated by the existing `max_seq_len`; choose the context
+length and subset accordingly. No new CLI options or streaming are introduced.
 
 ## Training
 
-Start with a small external plain-QA shard and a batch size that fits your device:
+Run from the repository root. Example: 8-GPU DDP, batch size 4 per GPU
+(32 globally). Adjust GPU count, batch size and context length to available
+memory; this example is not a memory benchmark.
 
 ~~~bash
-python3 train.py --model 2B --steps 1000 --batch-size 1 --max-seq-len 4096 --data-dir ../datax/data/qa --output-dir checkpoints/modelx-2B
+OMP_NUM_THREADS=1 TOKENIZERS_PARALLELISM=false \
+torchrun --standalone --nproc-per-node=8 train.py \
+  --model 2B --steps 1000000 --batch-size 4 --max-seq-len 4096 \
+  --data-dir data --num-workers 16 --lr 3e-4 \
+  --output-dir checkpoints/datax-2B \
+  --log-interval 100 --save-interval 2000 --keep-checkpoints 1
 ~~~
 
-The sibling path is an example; use your actual external data location.
-A fresh output directory trains from random initialization. Existing checkpoints
-resume weights and progress with a fresh AdamW optimizer.
+`data/` is an externally prepared local dataset directory, not included in this
+repository. Set `--data-dir` to your actual data location if different.
+The loader currently excludes Agent directories; long CoT is subject to the
+existing 4096-token tail truncation in this example.
 
-For multiple GPUs, use `torchrun --standalone --nproc-per-node=N train.py ...`.
+A fresh output directory trains from random initialization. Existing checkpoints
+resume weights and progress with a fresh AdamW optimizer. `--steps` is the
+cumulative optimizer-step target.
+
 Training uses BF16 autocast and FP32 parameters; each DDP rank holds a full
 model and optimizer. There is no parameter sharding or activation checkpointing.
+The example saves every 2000 steps and retains the newest checkpoint.
 
 ## Inference
 
-Inference requires a checkpoint produced by training:
+Run from the repository root after training has saved a checkpoint:
 
 ~~~bash
-python3 infer.py --checkpoint checkpoints/modelx-2B --prompt "Explain how binary search works."
+python3 infer.py --model 2B --prompt "你好，请介绍一下自己。"
+python3 infer.py --model 2B --prompt "我为什么是我?"
+python3 infer.py --model 2B --prompt "世界上最高的是什么山"
+python3 infer.py --model 2B --prompt "世界上最可怕的物种是啥？并说明为啥可怕"
 ~~~
 
+`--model 2B` loads from `checkpoints/datax-2B`, matching the training example.
+Use `--checkpoint` to select another checkpoint directory.
 Use `--temperature 0.7` for sampling or `--max-new-tokens 256` to change the
 generation budget. Decoding is greedy by default; there is no KV cache.
 

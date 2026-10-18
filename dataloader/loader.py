@@ -37,6 +37,11 @@ class PretrainDataLoader:
         for index, message in enumerate(messages):
             header = ("\n" if index else "") + f"{message['role'].capitalize()}: "
             sample.append((header, False))
+            if message.get("reasoning_content"):
+                sample.append((
+                    "<think>" + message["reasoning_content"] + "</think>\n",
+                    message["role"] == "assistant",
+                ))
             sample.append((message["content"], message["role"] == "assistant"))
         return sample
     

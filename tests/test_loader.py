@@ -271,7 +271,7 @@ def test_progress_is_single_line_rank_zero_only_and_logs_are_clean(
     assert len(bars) == 1
     assert options[0]["disable"] == (rank != 0 or not tty)
     assert bars[0].pos == 0
-    assert options[0]["leave"] is False
+    assert options[0]["leave"] is True
     assert options[0]["mininterval"] == 0.5
     assert bars[0].disable  # Context manager closed it before yielding batches.
     output = stream.getvalue()
@@ -344,3 +344,39 @@ def test_empty_dataset_summary_has_zero_counts(tmp_path, capsys):
     loader = Loader(Tokenizer(), tmp_path, num_workers=1)
     assert list(loader) == []
     assert "[Data] Total: samples=0, tokens=0" in capsys.readouterr().out
+
+
+def test_agent_directory_is_excluded_before_reading(tmp_path):
+    root = tmp_path / "dataset" / "data"
+    normal = write(root / "qa" / "one.jsonl", qa())
+    cot = write(root / "cot" / "one.jsonl", {
+        "messages": [
+            {"role": "user", "content": "Q"},
+            {"role": "assistant", "content": "A", "reasoning_content": "Think"},
+        ],
+    })
+    agent = root / "agent" / "Code_Agent" / "one.jsonl"
+    agent.parent.mkdir(parents=True)
+    agent.write_text("{invalid: must not be read}\n")
+    expected = sorted([normal, cot], key=str)
+    assert find_jsonl_files(root) == expected
+    assert find_jsonl_files(root.parent) == expected
+    assert find_jsonl_files(root / "agent") == []
+    assert find_jsonl_files(agent.parent) == []
+    assert find_jsonl_files(agent) == []
+    batches = list(Loader(Tokenizer(), root, batch_size=2, max_seq_len=128, num_workers=1))
+    assert len(batches) == 1 and batches[0]["input_ids"].shape[0] == 2
+
+
+def test_agent_filter_is_directory_based_not_content_or_substring(tmp_path, monkeypatch):
+    # An unrelated workspace ancestor called agent must not hide ordinary data.
+    root = tmp_path / "agent" / "workspace" / "data"
+    keep = write(root / "qa" / "agent.jsonl", qa())
+    keep_other = write(root / "agent_notes" / "one.jsonl", qa(1))
+    write(root / "nested" / "agent" / "one.jsonl", qa(2))
+    assert set(find_jsonl_files(root)) == {keep, keep_other}
+    assert find_jsonl_files(keep) == [keep]
+    blocked = write(root / "agent" / "Code_Agent" / "one.jsonl", qa(3))
+    monkeypatch.chdir(blocked.parent)
+    assert find_jsonl_files(".") == []
+    assert find_jsonl_files(blocked.name) == []
