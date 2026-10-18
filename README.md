@@ -39,7 +39,7 @@ JSONL file or directory. The separate dataset repository is
 hf auth login
 
 # Download only data and its checksums; do not overwrite ModelX's README.
-hf download xytpai/datax --repo-type dataset --local-dir .
+hf download xytpai/datax --repo-type dataset --local-dir datax
 
 # Verify all downloaded JSONL files.
 md5sum -c MD5SUMS
