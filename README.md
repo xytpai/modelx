@@ -34,6 +34,17 @@ This repository contains **no training data**. Point `--data-dir` at an external
 JSONL file or directory. The separate dataset repository is
 [xytpai/datax](https://huggingface.co/datasets/xytpai/datax).
 
+~~~bash
+# Log in with an account that has access if the dataset is private.
+hf auth login
+
+# Download only data and its checksums; do not overwrite ModelX's README.
+hf download xytpai/datax --repo-type dataset --local-dir .
+
+# Verify all downloaded JSONL files.
+md5sum -c MD5SUMS
+~~~
+
 The current loader supports ordinary user/assistant conversations and book/wiki
 text. It loads records and encoded samples into memory rather than streaming,
 and tail-truncates sequences exceeding `max_seq_len`.
@@ -60,7 +71,7 @@ memory; this example is not a memory benchmark.
 OMP_NUM_THREADS=1 TOKENIZERS_PARALLELISM=false \
 torchrun --standalone --nproc-per-node=8 train.py \
   --model 2B --steps 1000000 --batch-size 4 --max-seq-len 4096 \
-  --data-dir data --num-workers 16 --lr 3e-4 \
+  --data-dir /home/yuxu/upstream/datax/data --num-workers 16 --lr 3e-4 \
   --output-dir checkpoints/datax-2B \
   --log-interval 100 --save-interval 2000 --keep-checkpoints 1
 ~~~
