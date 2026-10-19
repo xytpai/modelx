@@ -61,6 +61,13 @@ local file selection; it does not delete data or update the remote dataset.
 Long CoT may be truncated by the existing `max_seq_len`; choose the context
 length and subset accordingly. No new CLI options or streaming are introduced.
 
+When scanning directories, the file finder shuffles code JSONL shards with a
+fixed seed (42) and keeps `ceil(number_of_code_files / 10)` of them: currently
+11 of 107 files. This is a file-level subset, not an exact 10% sample of rows.
+All ranks and passes use the same selected shards; other categories are
+unchanged. An explicitly specified single JSONL file is still loaded as-is.
+No source files are deleted or changed.
+
 ## Training
 
 Run from the repository root. Example: 8-GPU DDP, batch size 4 per GPU

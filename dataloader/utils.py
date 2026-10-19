@@ -1,5 +1,6 @@
 import sys
 import json
+import random
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from itertools import islice
@@ -24,6 +25,19 @@ def find_jsonl_files(root: str | Path):
         path for path in root.rglob("*.jsonl")
         if path.is_file() and "agent" not in path.relative_to(root).parts[:-1]
     ]
+    # Fixed 10% of code shards for every rank/pass; explicit single files stay explicit.
+    root_parts = root.resolve().parts
+    in_code = root_parts[-1] == "code" or any(
+        a == "data" and b == "code" for a, b in zip(root_parts, root_parts[1:])
+    )
+    code_files = sorted(
+        (p for p in files if in_code or "code" in p.relative_to(root).parts[:-1]), key=str
+    )
+    if code_files:
+        random.Random(42).shuffle(code_files)
+        excluded = set(code_files[(len(code_files) + 9) // 10:])
+        files = [p for p in files if p not in excluded]
+
     def line_count(path: Path) -> int:
         with path.open("rb") as handle:
             return sum(1 for _ in handle)
